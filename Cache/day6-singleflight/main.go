@@ -73,7 +73,7 @@ func startAPISever(apiAddr string, group *gcache.Group) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/octet-stream")
-			w.Write(view.ByteSlice())
+			w.Write(append(view.ByteSlice(), '\n'))
 		},
 	))
 	log.Println("fontend server is running at", apiAddr)
