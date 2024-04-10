@@ -127,21 +127,21 @@ func main() {
 
 /*
 ./run.sh
-2024/04/10 17:58:13 gcache is running at http://localhost:8003
-2024/04/10 17:58:13 gcache is running at http://localhost:8002
-2024/04/10 17:58:13 fontend server is running at http://localhost:9999
-2024/04/10 17:58:13 gcache is running at http://localhost:8001
+2024/04/11 00:55:26 gcache is running at http://localhost:8003
+2024/04/11 00:55:26 fontend server is running at http://localhost:9999
+2024/04/11 00:55:26 gcache is running at http://localhost:8002
+2024/04/11 00:55:26 gcache is running at http://localhost:8001
 >>> start test
-2024/04/10 17:58:15 [Server http://localhost:8003] Pick peer http://localhost:8001
-2024/04/10 17:58:15 [Server http://localhost:8001] GET /_gcache/scores/Tom
-2024/04/10 17:58:15 [SlowDB] search key Tom
+2024/04/11 00:55:28 [Server http://localhost:8003] Pick peer http://localhost:8001
+2024/04/11 00:55:28 [Server http://localhost:8001] GET /_gcache/scores/Tom
+2024/04/11 00:55:28 [SlowDB] search key Tom
 630
-2024/04/10 17:58:15 [Server http://localhost:8003] Pick peer http://localhost:8001
-2024/04/10 17:58:15 [Server http://localhost:8001] GET /_gcache/scores/Tom
-2024/04/10 17:58:15 [GCache] hit
+2024/04/11 00:55:28 [Server http://localhost:8003] Pick peer http://localhost:8001
+2024/04/11 00:55:28 [Server http://localhost:8001] GET /_gcache/scores/Tom
+2024/04/11 00:55:28 [GCache] hit
 630
-2024/04/10 17:58:15 [Server http://localhost:8003] Pick peer http://localhost:8001
-2024/04/10 17:58:15 [Server http://localhost:8001] GET /_gcache/scores/Tom
-2024/04/10 17:58:15 [GCache] hit
 630
+
+8003 端口请求远程节点 8001 节点
+其中后面两个 curl 命令就被合并为一个请求了
 */
