@@ -46,21 +46,28 @@ func createGroup() *gcache.Group {
 }
 
 // 启动缓存服务器，创建 HTTPPool，添加节点信息，注册到 httpPool 中，启动 HTTP 服务（共3个端口，8001/8002/8003），用户不感知。
-// 启动三个端口用来代表三个远程节点
-func startCacheServer(addr string, addrs []string, gc *gcache.Group) {
+// 三个端口用来代表三个远程节点
+func startCacheServer(addr string, addrs []string, group *gcache.Group) {
+	// peers 是 HTTPPool，实现了 PeerPicker 接口和 http.Handler 接口
 	peers := gcache.NewHTTPPool(addr)
 	peers.Set(addrs...)
-	gc.RegisterPeers(peers)
+	// 注册 peers 用来选择远程节点
+	group.RegisterPeers(peers)
 	log.Println("gcache is running at", addr)
+	// peers 用来代理发送到当前节点的 http 请求，同样也是调用 group 的 Get 请求获取本地和远程数据
+	// API 服务调用 group 的 Get 方法，先查本地，再查远程。Cache 服务也调用 group 的 Get 方法
+	// 这就是为什么一致性哈希在选择节点的时候不选择本地节点，防止无限递归
 	log.Fatal(http.ListenAndServe(addr[7:], peers))
 }
 
 // 启动一个 API 服务（端口 9999），与用户进行交互，用户感知。
-func startAPISever(apiAddr string, gc *gcache.Group) {
+// API 服务通过 gache.Group 的 Get 方法获取本地和远程节点的缓存
+func startAPISever(apiAddr string, group *gcache.Group) {
 	http.Handle("/api", http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			key := r.URL.Query().Get("key")
-			view, err := gc.Get(key)
+			// 先查本地缓存，本地没有再选择远程节点，调用远程节点 Get 方法获取数据
+			view, err := group.Get(key)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -73,6 +80,14 @@ func startAPISever(apiAddr string, gc *gcache.Group) {
 	log.Fatal(http.ListenAndServe(apiAddr[7:], nil))
 }
 
+// 两个服务，API 服务、Cache 服务
+// API 服务调用 group 的 Get 方法，先查本地，再查远程。
+// API 查远程的时候调用的是实现了 PeerPicker 接口的 HTTPPool
+// Cache 服务通过 HTTPPool 接口的 ServeHTTP 函数接收 API 请求，也调用 group 的 Get 方法查询数据
+// Cache 服务也是先查询本地，再查询远程 Cache 服务
+// 因为是同一个 key，一致性哈希选择的也是同一个远程节点，因此 Cache 选择远程节点时选择的就是本地节点了
+// 再次选择本地节点说明缓存未命中，调用回调函数从外部获取数据
+// 不论是 API 还是 Cache 服务，在调用 group 的 Get 方法、选择远程节点的时候都不会选择本节点了，因为选择本节点可能导致无限递归
 func main() {
 
 	var port int
@@ -85,9 +100,11 @@ func main() {
 
 	// 启动 api 服务
 	apiAddr := "http://localhost:9999"
-	g := createGroup()
+	group := createGroup()
 	if api {
-		go startAPISever(apiAddr, g)
+		// 命令行中只一条命令是 api=true 的，因此只启动一个 9999 端口的 API 服务
+		// 这里的 group 用来查询缓存
+		go startAPISever(apiAddr, group)
 	}
 
 	// 启动 cache 服务
@@ -102,7 +119,10 @@ func main() {
 		addrs = append(addrs, v)
 	}
 
-	startCacheServer(addrMap[port], []string(addrs), g)
+	// 每次启动一个端口作为一个 Cache 节点，每个 Cache 节点都注册三个远程节点（包括自己）
+	// 命令行启动三次，即启动三个 Cache 节点
+	// 这里的 group 用来注册远程节点
+	startCacheServer(addrMap[port], addrs, group)
 }
 
 /*

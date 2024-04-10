@@ -62,6 +62,14 @@ func GetGroup(name string) *Group {
 	return g
 }
 
+// 注册一个 PeerPicker 节点选择器用来选择远程节点
+func (g *Group) RegisterPeers(peers PeerPicker) {
+	if g.peers != nil {
+		panic("RegisterPeerPicker called more than once")
+	}
+	g.peers = peers
+}
+
 // Get 函数用来查找缓存
 // 缓存存在直接返回
 // 不存在调用 Getter 接口的 Get 方法从源数据获取数据并返回
@@ -76,14 +84,6 @@ func (g *Group) Get(key string) (ByteView, error) {
 	}
 
 	return g.load(key)
-}
-
-// 注册一个 PeerPicker 节点选择器用来选择远程节点
-func (g *Group) RegisterPeers(peers PeerPicker) {
-	if g.peers != nil {
-		panic("RegisterPeerPicker called more than once")
-	}
-	g.peers = peers
 }
 
 // 先选择远程节点获取数据，如果远程节点数据获取失败则调用本地获取数据

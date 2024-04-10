@@ -17,6 +17,8 @@ const (
 )
 
 // 创建一个结构体 HTTPPool，作为承载节点间 HTTP 通信的核心数据结构
+// HTTPPool 既具备了提供 HTTP 服务的能力，接收客户端请求
+// 也具备据具体的 key，创建 HTTP 客户端从远程节点获取缓存值的能力
 type HTTPPool struct {
 	self     string // 基础 url，记录自己的地址 e.g. "https://example.net:8000"
 	basePath string // 节点间通信地址的前缀，例如 http://example.com/_gcache/ 开头的请求就是用于节点间访问
@@ -62,6 +64,7 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such group: "+groupName, http.StatusNotFound)
 	}
 
+	// 调用 group 的 Get 方法查找数据
 	view, err := group.Get(key)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -86,11 +89,14 @@ func (p *HTTPPool) Set(peers ...string) {
 	}
 }
 
+// 选择远程节点客户端
 // 包装了一致性哈希算法的 Get() 方法，根据具体的 key，选择节点，返回节点对应的 HTTP 客户端
 func (p *HTTPPool) PickPeer(key string) (PeerGetter, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// 注意这里不选择本节点
+	// 因为查询缓存的逻辑是先查本地，再查远程，如果选择远程节点的时候又选了本地节点，那么会导致无限递归
 	if peer := p.peers.Get(key); peer != "" && peer != p.self {
 		p.Log("Pick peer %s", peer)
 		return p.httpGetters[peer], true
@@ -98,6 +104,7 @@ func (p *HTTPPool) PickPeer(key string) (PeerGetter, bool) {
 	return nil, false
 }
 
+// 远程节点客户端
 // httpGetter 实现了 PeerGetter 接口
 type httpGetter struct {
 	baseURL string // 要访问的远程节点的地址，例如 http://example.com/_gcache/
@@ -110,6 +117,9 @@ func (h *httpGetter) Get(group string, key string) ([]byte, error) {
 		url.QueryEscape(key),
 	)
 	// 使用 http.Get 方法获取远程节点的值
+	// http 包发送 get 请求到 Cache 服务中
+	// Cache 服务是实现了 ServeHTTP 方法的 HTTPPool
+	// 因此被 Cache 服务的 ServeHTTP 方法捕获
 	res, err := http.Get(u)
 	if err != nil {
 		return nil, err
