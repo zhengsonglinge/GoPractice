@@ -46,6 +46,7 @@ func createGroup() *gcache.Group {
 }
 
 // 启动缓存服务器，创建 HTTPPool，添加节点信息，注册到 httpPool 中，启动 HTTP 服务（共3个端口，8001/8002/8003），用户不感知。
+// 启动三个端口用来代表三个远程节点
 func startCacheServer(addr string, addrs []string, gc *gcache.Group) {
 	peers := gcache.NewHTTPPool(addr)
 	peers.Set(addrs...)
@@ -82,7 +83,14 @@ func main() {
 	flag.BoolVar(&api, "api", false, "Start a api server?")
 	flag.Parse()
 
+	// 启动 api 服务
 	apiAddr := "http://localhost:9999"
+	g := createGroup()
+	if api {
+		go startAPISever(apiAddr, g)
+	}
+
+	// 启动 cache 服务
 	addrMap := map[int]string{
 		8001: "http://localhost:8001",
 		8002: "http://localhost:8002",
@@ -94,10 +102,26 @@ func main() {
 		addrs = append(addrs, v)
 	}
 
-	g := createGroup()
-	if api {
-		go startAPISever(apiAddr, g)
-	}
-
 	startCacheServer(addrMap[port], []string(addrs), g)
 }
+
+/*
+./run.sh
+2024/04/10 17:58:13 gcache is running at http://localhost:8003
+2024/04/10 17:58:13 gcache is running at http://localhost:8002
+2024/04/10 17:58:13 fontend server is running at http://localhost:9999
+2024/04/10 17:58:13 gcache is running at http://localhost:8001
+>>> start test
+2024/04/10 17:58:15 [Server http://localhost:8003] Pick peer http://localhost:8001
+2024/04/10 17:58:15 [Server http://localhost:8001] GET /_gcache/scores/Tom
+2024/04/10 17:58:15 [SlowDB] search key Tom
+630
+2024/04/10 17:58:15 [Server http://localhost:8003] Pick peer http://localhost:8001
+2024/04/10 17:58:15 [Server http://localhost:8001] GET /_gcache/scores/Tom
+2024/04/10 17:58:15 [GCache] hit
+630
+2024/04/10 17:58:15 [Server http://localhost:8003] Pick peer http://localhost:8001
+2024/04/10 17:58:15 [Server http://localhost:8001] GET /_gcache/scores/Tom
+2024/04/10 17:58:15 [GCache] hit
+630
+*/
