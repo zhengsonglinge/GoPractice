@@ -90,6 +90,7 @@ func (g *Group) Get(key string) (ByteView, error) {
 	return g.load(key)
 }
 
+// 缓存未命中，选择加载数据
 // 先选择远程节点获取数据，如果远程节点数据获取失败则调用本地获取数据
 func (g *Group) load(key string) (value ByteView, err error) {
 	// 使用 singleflight 合并请求

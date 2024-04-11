@@ -33,6 +33,12 @@ gcache/
                             |-----> 调用`回调函数`，获取值并添加到缓存 --> 返回缓存值 ⑶
 */
 
+/*
+		    API(9999)       			 group.Get 方法获取数据，调用 GetterPicer 的 Get 方法挑选节点
+		/	   |	    \
+cache1(8081) cache2(8082) cache3(8083)   选中节点后也调用 group.Get 方法获取数据
+*/
+
 // 创建一个名为 scores 的 Group 缓存空间，如果缓存未命中则读取数据库并返回
 func createGroup() *gcache.Group {
 	return gcache.NewGroup("scores", 2<<10, gcache.GetterFunc(
