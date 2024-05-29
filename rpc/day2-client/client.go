@@ -15,10 +15,10 @@ import (
 实现一个 RPC 客户端：
 1. 创建连接：是通过 Dial 函数调用 NewClient 函数创建客户端，创建过程中发送编码类型
 2. 接收请求：创建 client 的同时调用协程 go client.receive() 函数接收处理请求
-3. 发送请求：
+3. 发送请求：Go 异步调用，Call 同步调用，调用 send 函数发送数据给服务端
 */
 
-// 对 net/rpc 而言，一个函数需要能够被远程调用，需要满足如下五个条件：
+// 对 net/rpc 而言，一个函数需能够被远程调用，需要满足如下五个条件：
 // the method’s type is exported.
 // the method is exported.
 // the method has two arguments, both exported (or builtin) types.
@@ -157,6 +157,59 @@ func (client *Client) receive() {
 	client.terminateCalls(err)
 }
 
+// Go 和 Call 是客户端暴露给用户的两个 RPC 服务调用接口，Go 是一个异步接口，返回 call 实例。
+func (client *Client) Go(serviceMethod string, args, reply interface{}, done chan *Call) *Call {
+	if done == nil {
+		done = make(chan *Call, 10)
+	} else if cap(done) == 0 {
+		log.Panic("rpc client: done channel is unbuffered")
+	}
+	call := &Call{
+		ServiceMethod: serviceMethod,
+		Args:          args,
+		Reply:         reply,
+		Done:          done,
+	}
+	client.send(call)
+	return call
+}
+
+// Call 是对 Go 的封装，阻塞 call.Done，等待响应返回，是一个同步接口。
+func (client *Client) Call(serviceMethod string, args, reply interface{}) error {
+	call := <-client.Go(serviceMethod, args, reply, make(chan *Call, 1)).Done
+	return call.Error
+}
+
+// 实现客户端的发送请求功能
+func (client *Client) send(call *Call) {
+	// 加锁确保客户端能发送完整消息
+	client.sending.Lock()
+	defer client.sending.Unlock()
+
+	// 注册一个 call
+	seq, err := client.registerCall(call)
+	if err != nil {
+		call.Error = err
+		call.done()
+		return
+	}
+
+	// 请求头
+	client.header.ServiceMethod = call.ServiceMethod
+	client.header.Seq = seq
+	client.header.Error = ""
+
+	// 编码并发送数据
+	if err := client.cc.Write(&client.header, call.Args); err != nil {
+		call := client.removeCall(seq)
+		// 当 call 为 nil 时写入部分失败或 call 已经被处理过
+		if call != nil {
+			call.Error = err
+			call.done()
+		}
+	}
+}
+
 // 关闭连接
 func (client *Client) Close() error {
 	client.mu.Lock()
@@ -209,58 +262,5 @@ func (client *Client) terminateCalls(err error) {
 	for _, call := range client.pending {
 		call.Error = err
 		call.done()
-	}
-}
-
-// Go 和 Call 是客户端暴露给用户的两个 RPC 服务调用接口，Go 是一个异步接口，返回 call 实例。
-func (client *Client) Go(serviceMethod string, args, reply interface{}, done chan *Call) *Call {
-	if done == nil {
-		done = make(chan *Call, 10)
-	} else if cap(done) == 0 {
-		log.Panic("rpc client: done channel is unbuffered")
-	}
-	call := &Call{
-		ServiceMethod: serviceMethod,
-		Args:          args,
-		Reply:         reply,
-		Done:          done,
-	}
-	client.send(call)
-	return call
-}
-
-// Call 是对 Go 的封装，阻塞 call.Done，等待响应返回，是一个同步接口。
-func (client *Client) Call(serviceMethod string, args, reply interface{}) error {
-	call := <-client.Go(serviceMethod, args, reply, make(chan *Call, 1)).Done
-	return call.Error
-}
-
-// 实现客户端的发送请求功能
-func (client *Client) send(call *Call) {
-	// 加锁确保客户端能发送完整消息
-	client.sending.Lock()
-	defer client.sending.Unlock()
-
-	// 注册一个 call
-	seq, err := client.registerCall(call)
-	if err != nil {
-		call.Error = err
-		call.done()
-		return
-	}
-
-	// 请求头
-	client.header.ServiceMethod = call.ServiceMethod
-	client.header.Seq = seq
-	client.header.Error = ""
-
-	// 编码并发送数据
-	if err := client.cc.Write(&client.header, call.Args); err != nil {
-		call := client.removeCall(seq)
-		// 当 call 为 nil 时写入部分失败或 call 已经被处理过
-		if call != nil {
-			call.Error = err
-			call.done()
-		}
 	}
 }
