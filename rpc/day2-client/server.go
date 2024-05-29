@@ -22,7 +22,7 @@ body 的格式和长度通过 header 中的 Content-Type 和 Content-Length 指�
 为了提升性能，一般在报文的最开始会规划固定的字节，来协商相关的信息。
 比如第1个字节用来表示序列化方式，第2个字节表示压缩方式，第3-6字节表示 header 的长度，7-10 字节表示 body 的长度。
 
-对于 gRpc 来说，目前需要协商的唯一一项内容是消息的编解码方式。
+对于 gRPC 来说，目前需要协商的唯一一项内容是消息的编解码方式。
 */
 type Option struct {
 	MagicNumber int
